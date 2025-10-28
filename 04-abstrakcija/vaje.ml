@@ -19,10 +19,16 @@ module type NAT = sig
   type t
 
   val eq  : t -> t -> bool
+
   val zero : t
+  val one : t
+ 
+  val ( + ): t -> t -> t
+  val ( - ): t -> t -> t
+  val ( * ): t -> t -> t
   (* Dodajte manjkajoče! *)
-  (* val to_int : t -> int *)
-  (* val of_int : int -> t *)
+  val to_int : t -> int 
+  val of_int : int -> t
 end
 
 (*----------------------------------------------------------------------------*
@@ -34,13 +40,24 @@ end
 [*----------------------------------------------------------------------------*)
 
 module Nat_int : NAT = struct
-
   type t = int
-  let eq x y = failwith "later"
+  let eq x y = x = y
   let zero = 0
+  let one = 1
+
+  let ( + ) m n = m + n
+  let ( - ) m n = if m < n then zero else m - n
+  let ( * ) m n = m * n
+
+  let of_int x = x
+  let to_int n = n
   (* Dodajte manjkajoče! *)
 
 end
+
+let pet = Nat_int.of_int 5
+let deset = Nat_int.of_int 10
+let petnajst = Nat_int.( + ) pet deset
 
 (*----------------------------------------------------------------------------*
  Napišite implementacijo `NAT`, ki temelji na [Peanovih
