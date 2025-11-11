@@ -69,11 +69,44 @@ let petnajst = Nat_int.( + ) pet deset
 [*----------------------------------------------------------------------------*)
 
 module Nat_peano : NAT = struct
-
-  type t = unit (* To morate spremeniti! *)
-  let eq x y = failwith "later"
-  let zero = () (* To morate spremeniti! *)
+  type t =
+  | Nic
+  | Nasl of t (* To morate spremeniti! *)
+  let rec eq m n = 
+    match (m, n) with 
+    | Nic, Nic -> true
+    | Nic, _ | _ , Nic -> false
+    | Nasl m', Nasl n' -> eq m' n'
+  let zero = Nic
+  let one = Nasl Nic (* To morate spremeniti! *)
   (* Dodajte manjkajoče! *)
+
+  let rec ( + ) m n =
+    match n with
+    | Nic -> m
+    | Nasl n' -> (Nasl m) + n'
+
+  let rec ( * ) m n =
+    match n with
+    | Nic -> Nic
+    | Nasl n' -> m + (m * n')
+
+  let rec ( - ) m n =
+    match (m, n) with
+    | m, Nic -> m
+    | Nasl m', Nasl n' -> m' - n'
+    | Nic, _ -> Nic
+
+  let rec to_int n =
+    match n with
+    | Nic -> 0
+    | Nasl n' -> Int.add 1 (to_int n')
+  
+  let rec of_int n = 
+    match n with 
+    | 0 -> Nic
+    | n' -> Nasl (of_int (Int.sub n' 1))
+  
 
 end
 
@@ -99,11 +132,21 @@ module type CALC = sig
 end
 
 module Nat_calculations (N: NAT) : CALC with type t := N.t = struct
-  let factorial _ = (* To morate spremeniti! *)
-    N.zero
+  let rec factorial n = 
+    if N.eq n N.zero then N.one
+    else N.( * ) n (factorial ( 
+                    N.( - )
+                    n
+                    N.one
+                    ))
 
   let sum_100 = (* To morate spremeniti! *)
-    N.zero
+    let rec sum_prva n acc =
+      if N.eq n N.zero then acc
+      else
+        sum_prva (N.( - ) n N.one) (N.( + ) n acc)
+    in
+    sum_prva (N.of_int 100) N.zero
 end
 
 (*----------------------------------------------------------------------------*
@@ -116,6 +159,18 @@ end
 
 module Nat_int_calc = Nat_calculations (Nat_int)
 module Nat_peano_calc = Nat_calculations (Nat_peano)
+
+let fact_5_int = 
+  Nat_int_calc.factorial(Nat_int.of_int 5) |> Nat_int.to_int
+
+let fact_5_peoano =
+  Nat_peano_calc.factorial(Nat_peano.of_int 5) |> Nat_peano.to_int
+
+let sum_100_int =
+  Nat_int_calc.sum_100 |> Nat_int.to_int
+
+let sum_100_peano =
+  Nat_peano_calc.sum_100 |> Nat_peano.to_int
 
 
 (* val sum_100_int : int = 5050 *)
@@ -138,6 +193,18 @@ module Nat_pair (A: NAT) (B: NAT) : NAT = struct
 
   let eq x y = failwith "later"
   let zero = (A.zero, B.zero)
+  let one = (A.one, B.one)
+
+  let rec ( + ) (x1, y1) (x2, y2) = (A.( + )x1 x2 , B.( + )y1 y2)
+  let rec ( * ) (x1, y1) (x2, y2) = (A.( * )x1 x2, B.( * )y1 y2)
+  let rec ( - ) (x1, y1) (x2, y2) = (A. ( - )x1 x2, B. ( - )y1 y2)
+
+  let rec to_int (x, y) = Int.add (A.to_int x) (B.to_int y)
+  
+  let rec of_int x = 
+    let polovica = x/2 in
+    A.of_int polovica, B.of_int (Int.sub(x) (polovica))
+
   (* Dodajte manjkajoče! *)
 end
 
@@ -196,6 +263,14 @@ module Nat_pair_int_peano = Nat_pair (Nat_int) (Nat_peano)
 module type COMPLEX = sig
   type t
   val eq : t -> t -> bool
+  val zero : t
+  val one : t
+  val i : t
+  val negacija : t -> t
+  val konjugacija : t -> t
+  val ( ++ ) : t -> t -> t
+  val ( ** ) : t -> t -> t
+
   (* Dodajte manjkajoče! *)
 end
 
@@ -208,7 +283,15 @@ module Cartesian : COMPLEX = struct
 
   type t = {re : float; im : float}
 
-  let eq x y = failwith "later"
+  let eq x y = x = y
+  let zero = {re = 0. ; im = 0.}
+  let one = {re = 1. ; im = 0.}
+  let i = {re = 0.; im = 1.}
+  let negacija x = {re = -. x.re ; im = -. x.im}
+  let konjugacija x  = {re = x.re ; im = -. x.im}
+  let ( ++ ) z w = {re = z.re +. w.re ; im = z.im +. w.im}
+  let ( ** ) z w = {re = (z.re *. w.re) -. (z.im *. w.im) ; im = (z.re *. w.im) +. (z.im *. w.re)}
+
   (* Dodajte manjkajoče! *)
 
 end
@@ -228,8 +311,21 @@ module Polar : COMPLEX = struct
   let pi = 2. *. acos 0.
   let rad_of_deg deg = (deg /. 180.) *. pi
   let deg_of_rad rad = (rad /. pi) *. 180.
+  let normalize_arg arg = if arg >= 2. *. pi then arg -. (2. *. pi) else arg
 
-  let eq x y = failwith "later"
+  let eq x y = x = y
+  let zero = {magn = 0. ; arg = 0.}
+  let one = {magn = 1. ; arg = 0.}
+  let i = {magn = 1. ; arg = pi/.2.}
+  let negacija x = {magn = x.magn ; arg = -. x.arg}
+  let konjugacija x = {magn = x.magn ; arg = x.arg -. 2. *. pi}
+
+  let ( ++ ) x y = {magn = sqrt(x.magn ** 2. +. y.magn ** 2. +. 2. *. x.magn *. y.magn *. cos(x.arg -. y.arg));
+                    arg = atan2 ((x.magn *. sin(x.arg) +. y.magn *. sin(y.arg))) 
+                    ((x.magn *. cos(x.arg) +. y.magn *. cos(y.arg)))}
+
+  let ( ** ) x y = {magn = x.magn *. y.magn ; arg = normalize_arg(x.arg +. y.arg)}
+
   (* Dodajte manjkajoče! *)
 
 end
