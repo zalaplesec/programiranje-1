@@ -338,8 +338,7 @@ module NFA : NFA_SIG = struct
   type t = {
     stanja : (stanje * bool) list;
     zacetno : stanje;
-    prehodi : (stanje * char option * stanje) list;      (* normal transitions *)
-         (* epsilon transitions *)
+    prehodi : (stanje * char option * stanje) list;  
     }
 
   let ustvari s sprejemno =
@@ -351,18 +350,33 @@ module NFA : NFA_SIG = struct
     {stanja = (s, sprejemno) :: nfa.stanja;
     zacetno = nfa.zacetno;
     prehodi = nfa.prehodi}
+
   let dodaj_prehod s1 n s2 nfa =
     {stanja = nfa.stanja;
     zacetno = nfa.zacetno;
-    prehodi =(s1, n, s2) :: nfa.prehodi}
+    prehodi =(s1, Some n, s2) :: nfa.prehodi}
 
-  let dodaj_prazen_prehod _ _ _ = ()
+  let dodaj_prazen_prehod s1 s2 nfa =
+    {stanja = nfa.stanja;
+    zacetno = nfa.zacetno;
+    prehodi = (s1, None, s2) :: nfa.prehodi}
 
-  let seznam_stanj _ = []
-  let zacetno_stanje _ = ""
-  let je_sprejemno_stanje _ _ = false
-  let prehodna_funkcija _ _ _ = []
-  let seznam_prehodov _  = []
+  let seznam_stanj nfa = List.map(fun (s, b) -> s)nfa.stanja
+
+  let zacetno_stanje nfa = nfa.zacetno 
+
+  let je_sprejemno_stanje nfa s =
+    match List.find_opt (fun (s1, _) -> s1 = s) nfa.stanja with
+  | Some (_, sprejemno) -> sprejemno
+  | None -> false
+
+  let prehodna_funkcija nfa s n = 
+    List.filter_map ((fun (s1, n', s2) ->
+      if s1 = s && n' = n then Some s2
+      else None))
+    nfa.prehodi
+
+  let seznam_prehodov nfa = nfa.prehodi
 end
 
 (*----------------------------------------------------------------------------*
@@ -403,7 +417,37 @@ let enke_ali_nicle_deljive_s_3 = NFA.(
  formatu `dot`.
 [*----------------------------------------------------------------------------*)
 
-let dot_of_nfa _ = ""
+let dot_of_nfa (nfa : NFA.t) = 
+let open NFA in
+let sprejemna =
+  seznam_stanj nfa
+  |> List.filter (fun x -> je_sprejemno_stanje nfa x)
+in
+let nesprejemna =
+  seznam_stanj nfa
+  |> List.filter (fun x -> not (je_sprejemno_stanje nfa x))
+in
+let stanja_niz =
+  "  node [shape=doublecircle]; " ^ String.concat " " sprejemna ^ ";\n" ^
+  "  node [shape=circle]; " ^ String.concat " " nesprejemna ^ ";\n" 
+in
+let zacetna_puscica = " \"\" [shape=none];\n \"\" -> " ^ zacetno_stanje nfa ^ ";\n" 
+in
+let prehodi_niz =
+  seznam_prehodov nfa
+  |> List.map (fun (s1, n, s2) ->
+    let oznaka_prehoda =
+      match n with
+      | Some n' -> String.make 1 n'
+      | None -> "ε"
+    in
+    "  " ^ s1 ^ " -> " ^ s2 ^ " [label=\"" ^ oznaka_prehoda ^ "\"];\n")
+  |> String.concat ""
+  in
+  "digraph NFA {\n" ^
+  " rankdir=LR; \n size=\"8,5\";\n" ^
+  stanja_niz ^ zacetna_puscica ^ prehodi_niz ^
+  "}\n"
 
 let () = enke_ali_nicle_deljive_s_3 |> dot_of_nfa |> print_endline
 
@@ -416,7 +460,37 @@ let () = enke_ali_nicle_deljive_s_3 |> dot_of_nfa |> print_endline
  avtomat sprejme podani niz.
 [*----------------------------------------------------------------------------*)
 
-let nfa_sprejema _ _ = false
+let nfa_sprejema (nfa : NFA.t) niz =
+  let open NFA in
+
+  let rec prazni_prehodi obiskana stanja =
+    let nova_stanja =
+      stanja
+      |> List.map (fun s -> prehodna_funkcija nfa s None)
+      |> List.flatten
+      |> List.filter (fun s -> not (List.mem s obiskana))
+    in
+    if nova_stanja = [] then stanja
+    else prazni_prehodi (obiskana @ nova_stanja) (stanja @ nova_stanja)
+  in
+
+  let rec aux trenutna_stanja i =
+    let trenutna_stanja = prazni_prehodi [] trenutna_stanja in
+    if i = String.length niz then 
+      List.exists (je_sprejemno_stanje nfa) trenutna_stanja
+    else
+      let elt = Some niz.[i] in
+      let naslednja_stanja = 
+        trenutna_stanja
+        |> List.map (fun s -> prehodna_funkcija nfa s elt)
+        |> List.flatten
+      in
+      if naslednja_stanja = [] then false
+      else
+        aux naslednja_stanja (i + 1)
+  in
+  aux [NFA.zacetno_stanje nfa] 0
+
 
 let primer_nfa = List.filter (nfa_sprejema enke_ali_nicle_deljive_s_3) nizi
 (* val primer_nfa : string list =
@@ -490,7 +564,39 @@ let re_enke_deljive_s_3 =
  Poleg tega sta stik in unija asociativni operaciji.
 [*----------------------------------------------------------------------------*)
 
-let string_of_regex _ = ()
+let string_of_regex r = 
+  let prednost_reg r =
+    match r with
+    | Union _ -> 1
+    | Concat _ -> 2
+    | Star _ -> 3
+    | _ -> 4
+  in
+  let rec aux r zunanja_prednost =
+    let trenutna_prednost = prednost_reg r in
+    let potrebuje_oklepaje = trenutna_prednost < zunanja_prednost in
+    let oklepaji n = "(" ^ n ^")"
+    in
+    let r =
+      match r with
+      | Empty -> "∅"
+      | Eps -> "ε"
+      | Char c -> String.make 1 c
+      | Star r' ->
+        let s = aux r' 3 in 
+        s ^ "*"
+      | Concat (r1, r2) ->
+        let s1 = aux r1 2 in
+        let s2 = aux r2 2 in
+        s1 ^ s2
+      | Union (r1, r2) ->
+        let s1 = aux r1 1 in
+        let s2 = aux r2 1 in
+        s1 ^ "|" ^ s2
+    in
+    if potrebuje_oklepaje then oklepaji r else r
+in
+aux r 0
 
 let primer_regex_1 = string_of_regex re_enke_deljive_s_3
 (* val primer_regex_1 : string = "0*(10*10*10*)*" *)
@@ -504,7 +610,39 @@ let primer_regex_1 = string_of_regex re_enke_deljive_s_3
  dan niz ustreza regularnemu izrazu.
 [*----------------------------------------------------------------------------*)
 
-let rec regex_sprejema _ _ = false
+let rec regex_sprejema r s =
+  match r with
+  | Empty -> false
+  | Eps -> s = ""
+  | Char c -> s = String.make 1 c
+  | Union (r1, r2) -> regex_sprejema r1 s || regex_sprejema r2 s
+  | Concat (r1, r2) ->
+      let dolzina_niza = String.length s in
+      let rec razdeli i =
+        if i > dolzina_niza then false
+        else 
+          let s1 = String.sub s 0 i in
+          let s2 = String.sub s i (dolzina_niza - i) in
+          if regex_sprejema r1 s1  && regex_sprejema r2 s2 then true
+          else
+            razdeli (i + 1)
+      in
+      razdeli 0
+  | Star r' ->
+      if s = "" then true
+      else
+        let dolzina_niza = String.length s  in
+        let rec razdeli i =
+          if i = 0 then false
+          else
+            let s1 = String.sub s 0 i in
+            let s2 = String.sub s i (dolzina_niza - i) in
+            if regex_sprejema r' s1 && regex_sprejema (Star r') s2 then true
+            else
+              razdeli (i - 1)
+        in
+        razdeli dolzina_niza
+
 
 let primer_regex_2 = regex_sprejema re_enke_deljive_s_3 "10011"
 (* val primer_regex_2 : bool = true *)
