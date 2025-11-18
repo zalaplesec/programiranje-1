@@ -90,7 +90,7 @@ module DFA : DFA_SIG = struct
     prehodi : (stanje * char * stanje) list
   }
 
-  let ustvari (s : stanje) (sprejemno : bool) : t = 
+  let ustvari s sprejemno = 
     {
       stanja = [(s, sprejemno)];
       zacetno = s;
@@ -156,7 +156,33 @@ let enke_deljive_s_3 = DFA.(
  pregledovalniku](https://www.devtoolsdaily.com/graphviz/).
 [*----------------------------------------------------------------------------*)
 
-let dot_of_dfa (dfa : DFA.t) : string = ""
+let dot_of_dfa (dfa : DFA.t) : string = 
+  (* Sprejemna_stanja *)
+  let open DFA in
+  let sprejemna =
+    seznam_stanj dfa
+    |> List.filter (fun x -> je_sprejemno_stanje dfa x)
+  in
+  let nesprejemna =
+    seznam_stanj dfa
+    |> List.filter (fun x -> not (je_sprejemno_stanje dfa x))
+  in
+  let stanja_niz =
+    "  node [shape=doublecircle]; " ^ String.concat " " sprejemna ^ ";\n" ^
+    "  node [shape=circle]; " ^ String.concat " " nesprejemna ^ ";\n" 
+  in
+  let zacetna_puscica = " \"\" [shape=none];\n \"\" -> " ^ zacetno_stanje dfa ^ ";\n" 
+  in
+  let prehodi_niz =
+    seznam_prehodov dfa
+    |> List.map (fun (s1, n, s2) ->
+      "  " ^ s1 ^ " -> " ^ s2 ^ " [label=\"" ^ String.make 1 n ^ "\"];\n")
+    |> String.concat ""
+    in
+    "digraph DFA {\n" ^
+    " rankdir=LR; \n size=\"8,5\";\n" ^
+    stanja_niz ^ zacetna_puscica ^ prehodi_niz ^
+    "}\n"
 
 let () = enke_deljive_s_3 |> dot_of_dfa |> print_endline
 
@@ -169,7 +195,18 @@ let () = enke_deljive_s_3 |> dot_of_dfa |> print_endline
  avtomat sprejme podani niz.
 [*----------------------------------------------------------------------------*)
 
-let dfa_sprejema _ _ = false
+let dfa_sprejema (dfa : DFA.t) niz =
+  let open DFA in
+  let rec aux trenutno_stanje i =
+    if i = String.length niz then
+      DFA.je_sprejemno_stanje dfa trenutno_stanje
+    else
+      let elt = niz.[i] in
+      match DFA.prehodna_funkcija dfa trenutno_stanje elt with
+      | None -> false
+      | Some naslednje_stanje -> aux naslednje_stanje (i + 1)
+    in
+  aux (DFA.zacetno_stanje dfa) 0
 
 let nizi =
   let razsiri nizi = List.map ((^) "0") nizi @ List.map ((^) "1") nizi in
@@ -298,11 +335,27 @@ end
 
 module NFA : NFA_SIG = struct
   type stanje = string
-  type t = unit
+  type t = {
+    stanja : (stanje * bool) list;
+    zacetno : stanje;
+    prehodi : (stanje * char option * stanje) list;      (* normal transitions *)
+         (* epsilon transitions *)
+    }
 
-  let ustvari _ _ = ()
-  let dodaj_stanje _ _ _ = ()
-  let dodaj_prehod _ _ _ _ = ()
+  let ustvari s sprejemno =
+   { stanja = [(s, sprejemno)];
+    zacetno = s;
+    prehodi = [] }
+
+  let dodaj_stanje s sprejemno nfa =
+    {stanja = (s, sprejemno) :: nfa.stanja;
+    zacetno = nfa.zacetno;
+    prehodi = nfa.prehodi}
+  let dodaj_prehod s1 n s2 nfa =
+    {stanja = nfa.stanja;
+    zacetno = nfa.zacetno;
+    prehodi =(s1, n, s2) :: nfa.prehodi}
+
   let dodaj_prazen_prehod _ _ _ = ()
 
   let seznam_stanj _ = []
