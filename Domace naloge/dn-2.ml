@@ -156,8 +156,8 @@ let enke_deljive_s_3 = DFA.(
  pregledovalniku](https://www.devtoolsdaily.com/graphviz/).
 [*----------------------------------------------------------------------------*)
 
-let dot_of_dfa (dfa : DFA.t) : string = 
-  (* Sprejemna_stanja *)
+let dot_of_dfa dfa = 
+  
   let open DFA in
   let sprejemna =
     seznam_stanj dfa
@@ -195,7 +195,7 @@ let () = enke_deljive_s_3 |> dot_of_dfa |> print_endline
  avtomat sprejme podani niz.
 [*----------------------------------------------------------------------------*)
 
-let dfa_sprejema (dfa : DFA.t) niz =
+let dfa_sprejema dfa niz =
   let open DFA in
   let rec aux trenutno_stanje i =
     if i = String.length niz then
@@ -417,7 +417,7 @@ let enke_ali_nicle_deljive_s_3 = NFA.(
  formatu `dot`.
 [*----------------------------------------------------------------------------*)
 
-let dot_of_nfa (nfa : NFA.t) = 
+let dot_of_nfa nfa = 
 let open NFA in
 let sprejemna =
   seznam_stanj nfa
@@ -460,36 +460,37 @@ let () = enke_ali_nicle_deljive_s_3 |> dot_of_nfa |> print_endline
  avtomat sprejme podani niz.
 [*----------------------------------------------------------------------------*)
 
-let nfa_sprejema (nfa : NFA.t) niz =
+let nfa_sprejema nfa niz =
   let open NFA in
 
-  let rec prazni_prehodi obiskana stanja =
-    let nova_stanja =
-      stanja
-      |> List.map (fun s -> prehodna_funkcija nfa s None)
-      |> List.flatten
-      |> List.filter (fun s -> not (List.mem s obiskana))
-    in
-    if nova_stanja = [] then stanja
-    else prazni_prehodi (obiskana @ nova_stanja) (stanja @ nova_stanja)
+  let rec eps_zaprtje obiskani = function
+    | [] -> obiskani
+    | s :: xs ->
+        if List.mem s obiskani then
+          eps_zaprtje obiskani xs
+        else
+          let naslednji = prehodna_funkcija nfa s None in
+          eps_zaprtje (s :: obiskani) (naslednji @ xs)
   in
 
-  let rec aux trenutna_stanja i =
-    let trenutna_stanja = prazni_prehodi [] trenutna_stanja in
-    if i = String.length niz then 
-      List.exists (je_sprejemno_stanje nfa) trenutna_stanja
+  let eps_zaprtje stanja = eps_zaprtje [] stanja in
+
+  let rec aux stanja i =
+    let stanja = eps_zaprtje stanja in
+    if i = String.length niz then
+      List.exists (je_sprejemno_stanje nfa) stanja
     else
-      let elt = Some niz.[i] in
-      let naslednja_stanja = 
-        trenutna_stanja
-        |> List.map (fun s -> prehodna_funkcija nfa s elt)
+      let c = niz.[i] in
+      let naslednja_stanja =
+        stanja
+        |> List.map (fun s -> prehodna_funkcija nfa s (Some c))
         |> List.flatten
+        |> eps_zaprtje
       in
-      if naslednja_stanja = [] then false
-      else
-        aux naslednja_stanja (i + 1)
+      aux naslednja_stanja (i + 1)
   in
-  aux [NFA.zacetno_stanje nfa] 0
+
+  aux [zacetno_stanje nfa] 0
 
 
 let primer_nfa = List.filter (nfa_sprejema enke_ali_nicle_deljive_s_3) nizi
@@ -665,8 +666,9 @@ let primer_regex_3 = regex_sprejema re_enke_deljive_s_3 "100111"
 (*----------------------------------------------------------------------------*
  Definirajte avtomat `prazen_nfa: NFA.t`, ki ne sprejme nobenega niza.
 [*----------------------------------------------------------------------------*)
-
-let prazen_nfa  = ()
+let prazen_nfa = 
+  let open NFA in
+  ustvari "zacetna" false
 
 let primer_regex_4 = List.filter (nfa_sprejema prazen_nfa) nizi
 (* val primer_regex_4 : string list = [] *)
@@ -675,7 +677,12 @@ let primer_regex_4 = List.filter (nfa_sprejema prazen_nfa) nizi
  Definirajte avtomat `epsilon_nfa: NFA.t`, ki sprejme natanko prazen niz.
 [*----------------------------------------------------------------------------*)
 
-let epsilon_nfa  = ()
+let epsilon_nfa  = 
+  let open NFA in
+  let nfa = ustvari "s" false in
+  let nfa = dodaj_stanje "a" true nfa in
+    dodaj_prazen_prehod "s" "a" nfa
+  
 
 let primer_regex_5 = List.filter (nfa_sprejema epsilon_nfa) nizi
 (* val primer_regex_5 : string list = [""] *)
@@ -685,7 +692,11 @@ let primer_regex_5 = List.filter (nfa_sprejema epsilon_nfa) nizi
  natanko niz dolžine ena z znakom v argumentu.
 [*----------------------------------------------------------------------------*)
 
-let znak_nfa _ = ()
+let znak_nfa c =
+  let open NFA in
+  ustvari "zac" false
+  |> dodaj_stanje "konc" true
+  |> dodaj_prehod "zac" c "konc"
 
 let primer_regex_6 = List.filter (nfa_sprejema (znak_nfa '0')) nizi
 (* val primer_regex_6 : string list = ["0"] *)
@@ -694,9 +705,80 @@ let primer_regex_6 = List.filter (nfa_sprejema (znak_nfa '0')) nizi
  Definirajte funkcijo `unija_nfa: NFA.t -> NFA.t -> NFA.t`, ki vrne avtomat, ki
  sprejme nize sprejete s katerim koli izmed avtomatov v argumentih.
 [*----------------------------------------------------------------------------*)
+let preimenuj_nfa predpona nfa =
+  let open NFA in
+  let stara = seznam_stanj nfa in
+  let staro_zacetno = zacetno_stanje nfa in
 
-let unija_nfa _ _ = ()
+  let dodaj_predpono s = predpona ^ s in
 
+  let zacetno_sprejemno = je_sprejemno_stanje nfa staro_zacetno in
+
+  let nov_nfa =
+    ustvari (dodaj_predpono staro_zacetno) zacetno_sprejemno in
+  let nov_nfa =
+    List.fold_left
+    (fun sprejemljivost s ->
+      if s = staro_zacetno then sprejemljivost 
+      else
+        let sprejemno = je_sprejemno_stanje nfa s in
+        dodaj_stanje (dodaj_predpono s) sprejemno sprejemljivost)
+      nov_nfa
+      stara 
+      in
+  let nov_nfa =
+    List.fold_left
+    (fun sprejemljivost (s1, c_opt, s2) ->
+      match c_opt with
+      | None -> dodaj_prazen_prehod (dodaj_predpono s1) (dodaj_predpono s2) sprejemljivost
+      | Some c -> dodaj_prehod (dodaj_predpono s1) c (dodaj_predpono s2) sprejemljivost)
+    nov_nfa
+    (seznam_prehodov nfa) in
+    nov_nfa
+
+let unija_nfa nfa1 nfa2 =
+  let open NFA in
+
+  let nfa1 = preimenuj_nfa "L_" nfa1 in
+  let nfa2 = preimenuj_nfa "R_" nfa2 in
+
+  let nov_zacetek = "unija_zacetek" in
+
+  let nfa_u = ustvari nov_zacetek false in
+
+  let dodaj_vsa_stanja nfa' acc =
+    List.fold_left
+      (fun acc s ->
+         let sprejemno = je_sprejemno_stanje nfa' s in
+         dodaj_stanje s sprejemno acc)
+      acc
+      (seznam_stanj nfa')
+  in
+
+  let nfa_u = dodaj_vsa_stanja nfa1 nfa_u in
+  let nfa_u = dodaj_vsa_stanja nfa2 nfa_u in
+
+  let dodaj_vse_prehode nfa' acc =
+    List.fold_left
+      (fun acc (s1, n, s2) ->
+         match n with
+         | None ->
+             dodaj_prazen_prehod s1 s2 acc
+         | Some n' ->
+             dodaj_prehod s1 n' s2 acc)
+      acc
+      (seznam_prehodov nfa')
+  in
+
+  let nfa_u = dodaj_vse_prehode nfa1 nfa_u in
+  let nfa_u = dodaj_vse_prehode nfa2 nfa_u in
+
+  let z1 = zacetno_stanje nfa1 in
+  let z2 = zacetno_stanje nfa2 in
+  let nfa_u = dodaj_prazen_prehod nov_zacetek z1 nfa_u in
+  let nfa_u = dodaj_prazen_prehod nov_zacetek z2 nfa_u in
+
+  nfa_u
 let primer_regex_7 = List.filter (nfa_sprejema (unija_nfa epsilon_nfa (znak_nfa '0'))) nizi
 (* val primer_regex_7 : string list = [""; "0"] *)
 
@@ -706,7 +788,60 @@ let primer_regex_7 = List.filter (nfa_sprejema (unija_nfa epsilon_nfa (znak_nfa 
  argumentu, in drugega dela, ki ga sprejme avtomat v drugem argumentu.
 [*----------------------------------------------------------------------------*)
 
-let stik_nfa _ _ = ()
+  let stik_nfa nfa1 nfa2 =
+    let open NFA in
+  
+    let nfa1 = preimenuj_nfa "L_" nfa1 in
+    let nfa2 = preimenuj_nfa "R_" nfa2 in
+  
+    let z1 = zacetno_stanje nfa1 in
+    let z2 = zacetno_stanje nfa2 in
+  
+    let nfa_s = ustvari z1 false in
+  
+    let nfa_s =
+      List.fold_left
+        (fun acc s ->
+           if s = z1 then acc
+           else
+             dodaj_stanje s false acc)
+        nfa_s
+        (seznam_stanj nfa1)
+    in
+    let nfa_s =
+      List.fold_left
+        (fun acc s ->
+           let sprejemno = je_sprejemno_stanje nfa2 s in
+           dodaj_stanje s sprejemno acc)
+        nfa_s
+        (seznam_stanj nfa2)
+    in
+
+    let dodaj_vse_prehode iz acc =
+      List.fold_left
+        (fun acc (s1, c_opt, s2) ->
+           match c_opt with
+           | None -> dodaj_prazen_prehod s1 s2 acc
+           | Some c -> dodaj_prehod s1 c s2 acc)
+        acc
+        (seznam_prehodov iz)
+    in
+  
+    let nfa_s = dodaj_vse_prehode nfa1 nfa_s in
+    let nfa_s = dodaj_vse_prehode nfa2 nfa_s in
+  
+    let nfa_s =
+      List.fold_left
+        (fun acc s ->
+           if je_sprejemno_stanje nfa1 s then
+             dodaj_prazen_prehod s z2 acc
+           else
+             acc)
+        nfa_s
+        (seznam_stanj nfa1)
+    in
+  
+    nfa_s
 
 let primer_regex_8 = List.filter (nfa_sprejema (stik_nfa (znak_nfa '0') (znak_nfa '1'))) nizi
 (* val primer_regex_8 : string list = ["01"] *)
@@ -717,7 +852,31 @@ let primer_regex_8 = List.filter (nfa_sprejema (stik_nfa (znak_nfa '0') (znak_nf
  avtomat v argumentu.
 [*----------------------------------------------------------------------------*)
 
-let kleenejevo_zaprtje_nfa _ = ()
+let kleenejevo_zaprtje_nfa nfa' =
+    let open NFA in
+    let zacetek = "zacetek" in
+    
+    let nfa = ustvari zacetek true in
+    
+    let nfa = List.fold_left (fun acc s ->
+        dodaj_stanje s (je_sprejemno_stanje nfa' s) acc
+      ) nfa (seznam_stanj nfa') in
+    
+    let nfa = List.fold_left (fun acc (s1, n, s2) ->
+        match n with
+        | Some n' -> dodaj_prehod s1 n' s2 acc
+        | None -> dodaj_prazen_prehod s1 s2 acc
+      ) nfa (seznam_prehodov nfa') in
+   
+    let nfa = dodaj_prazen_prehod zacetek (zacetno_stanje nfa') nfa in
+
+    let nfa = List.fold_left (fun acc s ->
+        if je_sprejemno_stanje nfa' s then
+          dodaj_prazen_prehod s (zacetno_stanje nfa') acc
+        else acc
+      ) nfa (seznam_stanj nfa') in
+    
+    nfa
 
 let primer_regex_9 = List.filter (nfa_sprejema (kleenejevo_zaprtje_nfa (znak_nfa '0'))) nizi
 (* val primer_regex_9 : string list = [""; "0"; "00"; "000"; "0000"; "00000"] *)
@@ -727,7 +886,16 @@ let primer_regex_9 = List.filter (nfa_sprejema (kleenejevo_zaprtje_nfa (znak_nfa
  -> NFA.t`, ki danemu regularnemu izrazu priredi `NFA`, ki sprejme isti jezik.
 [*----------------------------------------------------------------------------*)
 
-let rec nfa_of_regex _ = ()
+let rec nfa_of_regex r =
+  match r with
+  | Empty -> prazen_nfa
+  | Eps -> epsilon_nfa
+  | Char c -> znak_nfa c
+  | Union (r1, r2) ->
+    unija_nfa (nfa_of_regex r1) (nfa_of_regex r2)
+  | Concat (r1, r2) ->
+    stik_nfa (nfa_of_regex r1) (nfa_of_regex r2)
+  | Star r' -> kleenejevo_zaprtje_nfa (nfa_of_regex r')
 
 let primer_regex_10 = List.filter (nfa_sprejema (nfa_of_regex re_enke_deljive_s_3)) nizi
 (* val primer_regex_10 : string list =
